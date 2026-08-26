@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b2a1c">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>JalurNusa Offline V3.0.1</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">MAP PENDAKIAN INDONESIA</div>
+      <h1>JalurNusa <span>Offline</span> <b>V3.0.1</b></h1>
+    </div>
+    <button id="installBtn" class="round-btn hidden" aria-label="Pasang aplikasi">＋</button>
+  </header>
+
+  <main>
+    <section id="homeView" class="view active">
+      <div class="hero-card">
+        <div>
+          <small>Status perangkat</small>
+          <h2 id="networkTitle">Siap digunakan</h2>
+          <p id="networkSub">Rute, paket peta, rencana pendakian, tracking, dan alat lapangan tersedia secara offline.</p>
+        </div>
+        <div id="networkBadge" class="badge">READY</div>
+      </div>
+
+      <div class="quick-status v3-status">
+        <div><span>Rute offline</span><strong id="homeRouteCount">0</strong></div>
+        <div><span>Paket peta</span><strong id="homeMapCount">0</strong></div>
+        <div><span>Rencana</span><strong id="homeTripCount">0</strong></div>
+        <div><span>Rekaman</span><strong id="homeTrackCount">0</strong></div>
+      </div>
+
+      <div class="search-row">
+        <input id="searchInput" type="search" placeholder="Cari gunung / provinsi…">
+        <select id="provinceFilter"><option value="">Semua wilayah</option></select>
+      </div>
+
+      <div class="section-head">
+        <div><small>KATALOG</small><h3>Gunung Indonesia</h3></div>
+        <button id="importBtn" class="link-btn">Impor rute</button>
+      </div>
+      <input id="fileInput" type="file" accept=".gpx,.geojson,.json,.jalurnusa.json,application/gpx+xml,application/geo+json,application/json" hidden>
+      <div id="mountainList" class="list"></div>
+    </section>
+
+    <section id="mapView" class="view map-view">
+      <div id="mapStage" class="map-stage">
+        <div class="offline-grid"></div>
+        <div id="tileLayer" class="tile-layer"></div>
+        <svg id="routeSvg" class="route-svg" xmlns="http://www.w3.org/2000/svg">
+          <polyline id="routeLine" class="main-route" points="" />
+          <polyline id="recordingLine" class="recording-route" points="" />
+          <g id="waypointMarkers"></g>
+          <g id="mapMarkers"></g>
+          <g id="gpsMarker"></g>
+        </svg>
+        <div class="map-attrib" id="mapAttrib">Peta rute offline</div>
+      </div>
+
+      <div class="map-top-controls">
+        <div id="mapModePill" class="pill">RUTE OFFLINE</div>
+        <button id="onlineTilesBtn" class="pill button-pill">Peta online: MATI</button>
+      </div>
+      <div class="zoom-controls">
+        <button id="zoomIn" aria-label="Perbesar">＋</button>
+        <button id="zoomOut" aria-label="Perkecil">−</button>
+      </div>
+      <button id="centerGpsBtn" class="map-fab gps" aria-label="Pusatkan GPS">◎</button>
+      <button id="fitRouteBtn" class="map-fab fit" aria-label="Tampilkan seluruh rute">⌗</button>
+
+      <div class="route-panel">
+        <div class="route-panel-head">
+          <div><small>RUTE AKTIF</small><h3 id="activeRouteName">Belum ada rute</h3></div>
+          <button id="clearRouteBtn" class="link-btn danger">Tutup</button>
+        </div>
+        <div class="route-stats route-stats-v2">
+          <div><span>Jarak</span><strong id="statDistance">—</strong></div>
+          <div><span>Gain</span><strong id="statElevation">—</strong></div>
+          <div><span>Waypoint</span><strong id="statWaypoints">—</strong></div>
+          <div id="offRouteStat"><span>Ke jalur</span><strong id="statOffRoute">—</strong></div>
+        </div>
+        <div id="elevationCard" class="elevation-card hidden">
+          <div class="elevation-head"><span>Profil elevasi</span><small id="elevationRange">—</small></div>
+          <svg id="elevationSvg" viewBox="0 0 320 64" preserveAspectRatio="none" aria-label="Profil elevasi"><polyline id="elevationLine" points="" /></svg>
+        </div>
+        <div id="routeProgressCard" class="route-progress-card hidden">
+          <div><span>PROGRESS JALUR</span><strong id="routeProgressPercent">0%</strong></div>
+          <div class="progress-bar"><i id="routeProgressBar"></i></div>
+          <small id="routeProgressNext">Aktifkan GPS untuk melihat progress.</small>
+        </div>
+        <div id="recordingStrip" class="recording-strip hidden">
+          <span class="recording-dot"></span><b>TRACKING AKTIF</b><span id="recordingMapStats">0.00 km • 0 titik</span>
+        </div>
+        <p class="safety-note">Navigasi digital adalah alat bantu. Verifikasi jalur, izin pendakian, cuaca, dan kondisi lapangan sebelum berangkat.</p>
+      </div>
+    </section>
+
+    <section id="savedView" class="view">
+      <div class="section-head"><div><small>RUTE</small><h3>Rute tersimpan</h3></div><button id="exportBackupBtn" class="link-btn">Backup data</button></div>
+      <div id="savedRoutes" class="list"></div>
+
+      <div class="section-head spaced"><div><small>RENCANA</small><h3>Rencana tersimpan</h3></div></div>
+      <div id="tripPlanList" class="list"></div>
+
+      <div class="section-head spaced"><div><small>PETA OFFLINE</small><h3>Paket PMTiles</h3></div><button id="importPmtilesBtn" class="link-btn">Impor .pmtiles</button></div>
+      <input id="pmtilesInput" type="file" accept=".pmtiles,application/vnd.pmtiles" hidden>
+      <div class="info-card compact"><b>V3: paket data offline</b><p>PMTiles tetap disimpan lokal. Rute juga dapat diekspor sebagai paket <code>.jalurnusa.json</code> yang membawa waypoint dan metadata panduan.</p></div>
+      <div id="mapPackageList" class="list"></div>
+
+      <div class="section-head spaced"><div><small>TRACKING</small><h3>Rekaman perjalanan</h3></div></div>
+      <div id="recordingList" class="list"></div>
+    </section>
+
+    <section id="planView" class="view">
+      <div class="section-head"><div><small>RENCANA PENDAKIAN</small><h3>Trail briefing offline</h3></div><button id="saveTripBtn" class="link-btn">Simpan</button></div>
+      <div id="planEmpty" class="empty">Buka salah satu rute terlebih dahulu untuk membuat rencana pendakian.</div>
+      <div id="planContent" class="hidden">
+        <div class="plan-hero">
+          <div><small>RUTE AKTIF</small><h2 id="planRouteName">—</h2><p id="planRouteMeta">—</p></div>
+          <button id="exportRoutePackageBtn" class="secondary small-btn">Ekspor paket</button>
+        </div>
+
+        <div class="form-grid">
+          <label>Nama perjalanan<input id="tripName" class="field" placeholder="Pendakian akhir pekan"></label>
+          <label>Tanggal<input id="tripDate" class="field" type="date"></label>
+          <label>Mulai<input id="tripStart" class="field" type="time" value="06:00"></label>
+          <label>Jumlah orang<input id="tripParty" class="field" type="number" min="1" max="99" value="1"></label>
+          <label>Kecepatan dasar<select id="tripPace" class="field"><option value="2.5">2,5 km/jam</option><option value="3" selected>3 km/jam</option><option value="3.5">3,5 km/jam</option><option value="4">4 km/jam</option></select></label>
+        </div>
+        <div class="info-card compact"><b>Estimasi waktu V3</b><p>Dihitung dari jarak + kenaikan elevasi rute. Gunakan hanya sebagai perkiraan; kondisi medan, cuaca, antrean, beban, dan kemampuan kelompok dapat mengubah waktu nyata.</p></div>
+
+        <div class="section-head spaced"><div><small>PROGRESS</small><h3>Posisi pada jalur</h3></div><button id="planStartGpsBtn" class="link-btn">Aktifkan GPS</button></div>
+        <div id="planProgress" class="progress-dashboard">
+          <div><span>Progress</span><strong id="planProgressPct">—</strong></div>
+          <div><span>Sisa rute</span><strong id="planRemaining">—</strong></div>
+          <div><span>Waypoint berikut</span><strong id="planNextWaypoint">—</strong></div>
+        </div>
+
+        <div class="section-head spaced"><div><small>WAYPOINT & SEGMEN</small><h3>Briefing jalur</h3></div></div>
+        <div id="segmentList" class="segment-list"></div>
+
+        <div class="section-head spaced"><div><small>TAMBAH WAYPOINT</small><h3>Catatan titik penting</h3></div></div>
+        <div class="waypoint-form">
+          <input id="wpName" class="field" placeholder="Nama waypoint, mis. Pos 2">
+          <select id="wpType" class="field"><option value="pos">Pos</option><option value="basecamp">Basecamp</option><option value="camp">Camp</option><option value="water">Sumber air (verifikasi)</option><option value="hazard">Titik rawan</option><option value="summit">Puncak</option><option value="custom">Lainnya</option></select>
+          <textarea id="wpDesc" class="field compact-textarea" placeholder="Catatan kondisi / informasi sumber"></textarea>
+          <div class="coord-grid"><input id="wpLat" class="field" inputmode="decimal" placeholder="Latitude"><input id="wpLng" class="field" inputmode="decimal" placeholder="Longitude"></div>
+          <div class="button-row"><button id="useGpsWaypointBtn" class="secondary">Gunakan GPS</button><button id="addWaypointBtn" class="primary">Tambah waypoint</button></div>
+        </div>
+
+        <div class="section-head spaced"><div><small>CHECKLIST</small><h3>Persiapan pendakian</h3></div><button id="resetChecklistBtn" class="link-btn danger">Reset</button></div>
+        <div id="checklistProgress" class="checklist-progress">0 / 0 selesai</div>
+        <div id="checklistList" class="checklist-list"></div>
+        <div class="add-check-row"><input id="customCheckInput" class="field" placeholder="Tambah item checklist"><button id="addCheckBtn" class="secondary">Tambah</button></div>
+      </div>
+    </section>
+
+    <section id="toolsView" class="view">
+      <div class="section-head"><div><small>ALAT LAPANGAN</small><h3>Navigasi & keselamatan</h3></div></div>
+      <div class="tool-grid">
+        <article class="tool-card">
+          <div class="tool-title"><div class="tool-icon">◎</div><div><h4>GPS langsung</h4><small id="gpsStatus">NONAKTIF</small></div></div>
+          <p id="gpsReadout">Belum aktif.</p>
+          <button id="startGpsBtn" class="primary full">Mulai GPS</button>
+        </article>
+
+        <article class="tool-card">
+          <div class="tool-title"><div class="tool-icon">↗</div><div><h4>Kompas</h4><small>ORIENTASI</small></div></div>
+          <div class="compass-wrap"><div id="compassNeedle" class="compass-needle">↑</div><div id="compassDegrees">—°</div></div>
+          <p id="compassReadout">Aktifkan untuk membaca arah perangkat.</p>
+          <button id="startCompassBtn" class="secondary full">Aktifkan kompas</button>
+        </article>
+
+        <article class="tool-card track-card">
+          <div class="tool-title"><div class="tool-icon">●</div><div><h4>Rekam perjalanan</h4><small>BREADCRUMB GPS</small></div></div>
+          <div class="track-live"><strong id="trackDistance">0.00 km</strong><span id="trackDuration">00:00:00</span><span id="trackPoints">0 titik</span></div>
+          <p id="trackHint">Rekam jejak Anda secara lokal. GPS harus aktif.</p>
+          <div class="button-row"><button id="recordTrackBtn" class="primary">Mulai tracking</button><button id="exportCurrentTrackBtn" class="secondary" disabled>Ekspor GPX</button></div>
+        </article>
+
+        <article class="tool-card">
+          <div class="tool-title"><div class="tool-icon">⇄</div><div><h4>Peringatan keluar jalur</h4><small>OFF-ROUTE</small></div></div>
+          <p>Berikan peringatan jika posisi GPS menjauh dari rute aktif.</p>
+          <div class="setting-row"><label><input id="offRouteToggle" type="checkbox"> Aktifkan</label><select id="offRouteThreshold"><option value="50">50 m</option><option value="100">100 m</option><option value="200">200 m</option><option value="300">300 m</option></select></div>
+          <div id="offRouteReadout" class="status-box">Belum ada pembacaan.</div>
+        </article>
+
+        <article class="tool-card emergency-card">
+          <div class="tool-title"><div class="tool-icon">!</div><div><h4>Lokasi darurat</h4><small>SHARE LOCATION</small></div></div>
+          <p id="emergencyLocation">Aktifkan GPS untuk menampilkan koordinat terakhir.</p>
+          <input id="emergencyName" class="field" placeholder="Nama kontak darurat">
+          <input id="emergencyPhone" class="field" type="tel" placeholder="Nomor kontak darurat">
+          <div class="button-row"><button id="shareLocationBtn" class="primary">Bagikan lokasi</button><button id="copyLocationBtn" class="secondary">Salin</button></div>
+          <button id="callEmergencyContactBtn" class="secondary full" disabled>Hubungi kontak tersimpan</button>
+        </article>
+
+        <article class="tool-card">
+          <div class="tool-title"><div class="tool-icon">▣</div><div><h4>Penyimpanan offline</h4><small>DEVICE STORAGE</small></div></div>
+          <p id="storageReadout">Memeriksa kapasitas…</p>
+          <button id="persistStorageBtn" class="secondary full">Pertahankan data offline</button>
+        </article>
+
+        <article class="tool-card">
+          <div class="tool-title"><div class="tool-icon">✎</div><div><h4>Catatan lapangan</h4><small>TERSIMPAN LOKAL</small></div></div>
+          <textarea id="fieldNote" placeholder="Kondisi jalur, sumber air, cuaca, nomor penting…"></textarea>
+          <button id="saveNoteBtn" class="secondary full">Simpan offline</button>
+        </article>
+
+        <article class="tool-card warning">
+          <div class="tool-title"><div class="tool-icon">⚠</div><div><h4>Keselamatan</h4><small>WAJIB DIPERHATIKAN</small></div></div>
+          <p>Jangan hanya mengandalkan satu ponsel. Bawa power bank, lampu, P3K, air, alat navigasi cadangan, dan informasikan rencana perjalanan kepada orang tepercaya.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button data-view="homeView" class="nav-item active"><span>⌂</span><small>Gunung</small></button>
+    <button data-view="mapView" class="nav-item"><span>⌖</span><small>Peta</small></button>
+    <button data-view="planView" class="nav-item"><span>☷</span><small>Rencana</small></button>
+    <button data-view="savedView" class="nav-item"><span>☆</span><small>Offline</small></button>
+    <button data-view="toolsView" class="nav-item"><span>＋</span><small>Alat</small></button>
+  </nav>
+</div>
+<div id="toast" class="toast"></div>
+<script src="pmtiles-lite.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
