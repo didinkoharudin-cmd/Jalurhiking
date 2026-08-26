@@ -37,7 +37,32 @@ function activate(r){if(!r)return;activeRoute=r;localStorage.setItem('jalurnusa_
 function openMountain(id){const r=routes.find(x=>x.mountainId===id);if(r)return activate(r);const m=mountains.find(x=>x.id===id);if(!m)return;activeRoute=null;localStorage.removeItem('jalurnusa_active');mapState.center=[m.lat,m.lng];mapState.zoom=12;setView('mapView');$('#activeRouteName').textContent=m.name+' — belum ada GPX';toast('Impor rute terverifikasi untuk gunung ini')}
 
 function parseGPX(text){const d=new DOMParser().parseFromString(text,'application/xml');if(d.querySelector('parsererror'))throw Error('GPX tidak valid');const pts=[...d.querySelectorAll('trkpt,rtept')].map(p=>[+p.getAttribute('lat'),+p.getAttribute('lon'),p.querySelector('ele')?+p.querySelector('ele').textContent:null]).filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1]));return{name:d.querySelector('trk > name,rte > name,metadata > name')?.textContent?.trim()||'Rute GPX',coords:pts}}
-function parseGeoJSON(text){const j=JSON.parse(text);let f=j.type==='FeatureCollection'?j.features.find(x=>['LineString','MultiLineString'].includes(x.geometry?.type)):j.type==='Feature'?j:null;if(!f&&['LineString','MultiLineString'].includes(j.type))f={geometry:j,properties:{}};if(!f)throw Error('GeoJSON tidak memiliki LineString');const c=f.geometry.type==='LineString'?f.geometry.coordinates:f.geometry.coordinates.flat();return{name:f.properties?.name||f.properties?.title||'Rute GeoJSON',coords:c.map(x=>[x[1],x[0],x[2]??null]).filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1]))}}
+function parseGeoJSON(text){
+  let j;try{j=JSON.parse(text)}catch{throw Error('GeoJSON tidak valid / JSON rusak')}
+  const lines=[], points=[];
+  const addLine=c=>{if(Array.isArray(c)&&c.length>=2)lines.push(c)};
+  const walk=g=>{
+    if(!g||typeof g!=='object')return;
+    if(g.type==='FeatureCollection'){(g.features||[]).forEach(walk);return}
+    if(g.type==='Feature'){walk(g.geometry);return}
+    if(g.type==='GeometryCollection'){(g.geometries||[]).forEach(walk);return}
+    if(g.type==='LineString'){addLine(g.coordinates);return}
+    if(g.type==='MultiLineString'){(g.coordinates||[]).forEach(addLine);return}
+    if(g.type==='Point'){if(Array.isArray(g.coordinates))points.push(g.coordinates);return}
+    if(g.type==='MultiPoint'){(g.coordinates||[]).forEach(c=>points.push(c));return}
+  };
+  walk(j);
+  // Untuk rute yang diekspor sebagai kumpulan waypoint/Point, urutan feature dipakai sebagai urutan jalur.
+  if(!lines.length&&points.length>=2)addLine(points);
+  if(!lines.length)throw Error('GeoJSON tidak berisi jalur. Gunakan LineString/MultiLineString, atau minimal 2 Point berurutan.');
+  const validLine=c=>c.map(x=>[Number(x?.[1]),Number(x?.[0]),x?.[2]==null?null:Number(x[2])]).filter(p=>Number.isFinite(p[0])&&Number.isFinite(p[1]));
+  const candidates=lines.map(validLine).filter(c=>c.length>=2);
+  if(!candidates.length)throw Error('Koordinat GeoJSON tidak valid. Format harus [longitude, latitude].');
+  // Bila file berisi beberapa segmen terpisah, ambil segmen terpanjang agar tidak membuat garis lurus palsu antar-segmen.
+  const coords=candidates.sort((a,b)=>distance(b)-distance(a))[0];
+  const props=j.type==='Feature'?j.properties:(j.type==='FeatureCollection'?(j.features||[]).find(f=>f?.properties?.name||f?.properties?.title)?.properties:null);
+  return{name:props?.name||props?.title||'Rute GeoJSON',coords}
+}
 async function importRoute(file,mountainId=''){const text=await file.text(),d=file.name.toLowerCase().endsWith('.gpx')?parseGPX(text):parseGeoJSON(text);if(d.coords.length<2)throw Error('Rute tidak memiliki cukup titik');const m=mountains.find(x=>x.id===mountainId);const r={id:crypto.randomUUID?.()||`${Date.now()}-${Math.random()}`,name:d.name||file.name,mountainId:mountainId||'',mountainName:m?.name||'',coords:d.coords,savedAt:new Date().toISOString(),sourceFile:file.name};await dbPut(r);routes.unshift(r);renderMountains();renderSaved();activate(r)}
 
 function project(lat,lng,z){const n=2**z,x=(lng+180)/360*n*TILE,rad=lat*Math.PI/180,y=(1-Math.asinh(Math.tan(rad))/Math.PI)/2*n*TILE;return[x,y]}
