@@ -1,0 +1,12 @@
+{
+  "name": "JalurNusa Offline",
+  "short_name": "JalurNusa",
+  "description": "Peta offline khusus rute pendakian gunung di Indonesia.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#07110c",
+  "theme_color": "#153d2d",
+  "orientation": "any",
+  "icons": [{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]
+}

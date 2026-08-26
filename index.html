@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#153d2d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>JalurNusa Offline</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header class="topbar">
+    <div><div class="eyebrow">MAP PENDAKIAN INDONESIA</div><h1>JalurNusa <span>Offline</span></h1></div>
+    <button id="installBtn" class="round-btn hidden" aria-label="Pasang aplikasi">＋</button>
+  </header>
+
+  <main>
+    <section id="homeView" class="view active">
+      <div class="hero-card">
+        <div><small>Status</small><h2 id="networkTitle">Siap digunakan</h2><p id="networkSub">Simpan rute terverifikasi untuk digunakan ketika sinyal hilang.</p></div>
+        <div id="networkBadge" class="badge">READY</div>
+      </div>
+      <div class="search-row">
+        <input id="searchInput" type="search" placeholder="Cari gunung / provinsi…">
+        <select id="provinceFilter"><option value="">Semua wilayah</option></select>
+      </div>
+      <div class="section-head"><div><small>KATALOG</small><h3>Gunung Indonesia</h3></div><button id="importBtn" class="link-btn">Impor GPX/GeoJSON</button></div>
+      <input id="fileInput" type="file" accept=".gpx,.geojson,.json,application/gpx+xml,application/geo+json" hidden>
+      <div id="mountainList" class="list"></div>
+    </section>
+
+    <section id="mapView" class="view map-view">
+      <div id="mapStage" class="map-stage">
+        <div class="offline-grid"></div>
+        <div id="tileLayer" class="tile-layer"></div>
+        <svg id="routeSvg" class="route-svg" xmlns="http://www.w3.org/2000/svg">
+          <polyline id="routeLine" points="" />
+          <g id="mapMarkers"></g>
+          <g id="gpsMarker"></g>
+        </svg>
+        <div class="map-attrib" id="mapAttrib">Peta rute offline</div>
+      </div>
+      <div class="map-top-controls">
+        <div class="pill">RUTE OFFLINE</div>
+        <button id="onlineTilesBtn" class="pill button-pill">Peta dasar: MATI</button>
+      </div>
+      <div class="zoom-controls">
+        <button id="zoomIn">＋</button><button id="zoomOut">−</button>
+      </div>
+      <button id="centerGpsBtn" class="map-fab gps">◎</button>
+      <button id="fitRouteBtn" class="map-fab fit">⌗</button>
+      <div class="route-panel">
+        <div class="route-panel-head"><div><small>RUTE AKTIF</small><h3 id="activeRouteName">Belum ada rute</h3></div><button id="clearRouteBtn" class="link-btn danger">Tutup</button></div>
+        <div class="route-stats"><div><span>Jarak</span><strong id="statDistance">—</strong></div><div><span>Titik</span><strong id="statPoints">—</strong></div><div><span>Gain</span><strong id="statElevation">—</strong></div></div>
+        <p class="safety-note">Gunakan hanya GPX/GeoJSON dari sumber yang Anda percaya. Kondisi jalur dan pembukaan pendakian dapat berubah.</p>
+      </div>
+    </section>
+
+    <section id="savedView" class="view">
+      <div class="section-head"><div><small>OFFLINE</small><h3>Rute tersimpan</h3></div></div>
+      <div id="savedRoutes" class="list"></div>
+    </section>
+
+    <section id="toolsView" class="view">
+      <div class="section-head"><div><small>ALAT LAPANGAN</small><h3>Navigasi & keselamatan</h3></div></div>
+      <div class="tool-grid">
+        <article class="tool-card"><div class="tool-icon">◎</div><h4>GPS langsung</h4><p id="gpsReadout">Belum aktif.</p><button id="startGpsBtn" class="primary">Mulai GPS</button></article>
+        <article class="tool-card"><div class="tool-icon">↗</div><h4>Kompas</h4><p id="compassReadout">Aktifkan untuk membaca arah perangkat.</p><button id="startCompassBtn" class="secondary">Aktifkan kompas</button></article>
+        <article class="tool-card"><div class="tool-icon">✎</div><h4>Catatan lapangan</h4><textarea id="fieldNote" placeholder="Kondisi jalur, sumber air, cuaca, nomor penting…"></textarea><button id="saveNoteBtn" class="secondary">Simpan offline</button></article>
+        <article class="tool-card warning"><div class="tool-icon">!</div><h4>Jangan hanya mengandalkan HP</h4><p>Bawa alat navigasi cadangan, power bank, lampu, P3K, air, dan informasikan rencana perjalanan kepada orang lain.</p></article>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button data-view="homeView" class="nav-item active"><span>⌂</span><small>Gunung</small></button>
+    <button data-view="mapView" class="nav-item"><span>⌖</span><small>Peta</small></button>
+    <button data-view="savedView" class="nav-item"><span>☆</span><small>Tersimpan</small></button>
+    <button data-view="toolsView" class="nav-item"><span>＋</span><small>Alat</small></button>
+  </nav>
+</div>
+<div id="toast" class="toast"></div>
+<script src="app.js"></script>
+</body>
+</html>
