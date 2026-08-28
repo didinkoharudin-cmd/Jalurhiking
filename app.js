@@ -5,11 +5,12 @@ const DB_NAME='JalurNusaDB', DB_VERSION=3;
 const STORES={routes:'routes',maps:'mapPackages',recordings:'recordings',trips:'tripPlans'};
 let mountains=[],routes=[],mapPackages=[],recordings=[],tripPlans=[];
 let activeTrip=null;
-let activeRoute=null,activeMapPackage=null,deferredInstall=null;
+let activeRoute=null,activeMapPackage=null,activeTerrainPackage=null,deferredInstall=null;
 let gpsWatch=null,gpsPosition=null,gpsFix=null,currentRecording=null,recordTimer=null;
 let lastOffRouteAlert=0,compassHandler=null;
 let mapState={center:[-2.35,117.6],zoom:5,dragging:false,last:null,onlineTiles:false};
 let mapRenderSeq=0,tileObjectUrls=[],readerCache=new Map();
+let vectorMap=null,pmProtocol=null,vectorArchiveKeys=new Set();
 
 function toast(msg){const e=$('#toast');e.textContent=msg;e.classList.add('show');clearTimeout(e._t);e._t=setTimeout(()=>e.classList.remove('show'),2600)}
 function esc(s=''){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
@@ -44,6 +45,7 @@ async function load(){
   for(const rec of recordings){if(rec.active){rec.active=false;rec.recovered=true;rec.endAt=rec.lastAt||new Date().toISOString();dbPut(STORES.recordings,rec).catch(()=>{})}}
   const activeId=localStorage.getItem('jalurnusa_active');activeRoute=routes.find(r=>r.id===activeId)||null;
   const mapId=localStorage.getItem('jalurnusa_map_package');activeMapPackage=mapPackages.find(p=>p.id===mapId)||null;
+  const terrainId=localStorage.getItem('jalurnusa_terrain_package');activeTerrainPackage=mapPackages.find(p=>p.id===terrainId)||null;
   const prov=[...new Set(mountains.map(m=>m.province))].sort();$('#provinceFilter').innerHTML='<option value="">Semua wilayah</option>'+prov.map(p=>`<option>${esc(p)}</option>`).join('');
   loadSettings();renderAll();updateNetwork();renderMap();updateStorage();renderPlan();
 }
@@ -73,8 +75,9 @@ function renderTripPlans(){
 async function removeTripPlan(id){await dbDelete(STORES.trips,id);tripPlans=tripPlans.filter(t=>t.id!==id);if(activeTrip?.id===id)activeTrip=activeRoute?getPlan(activeRoute):null;renderTripPlans();updateHomeCounts();renderMountains();renderPlan();toast('Rencana dihapus')}
 
 function renderMapPackages(){
-  $('#mapPackageList').innerHTML=mapPackages.length?mapPackages.map(p=>{const active=p.id===activeMapPackage?.id,h=p.header||{};return `<article class="card map-package-card"><div><h4>${active?'<span class="active-dot"></span>':''}${esc(p.name||p.fileName)}</h4><div class="meta"><span class="tag">${fmtBytes(p.size)}</span><span class="tag">z${h.minZoom??'?'}–${h.maxZoom??'?'}</span><span class="tag">${esc(p.tileLabel||'Raster')}</span>${p.mountainName?`<span class="tag">${esc(p.mountainName)}</span>`:''}</div><div class="status-line">${active?'AKTIF • ':''}${dateTimeID(p.importedAt)}</div></div><div class="actions"><button class="mini" data-pm-open="${p.id}">${active?'Peta':'Aktifkan'}</button><button class="mini secondary" data-pm-del="${p.id}">Hapus</button></div></article>`}).join(''):'<div class="empty">Belum ada paket peta. Impor PMTiles raster untuk menggunakan peta dasar tanpa internet.</div>';
+  $('#mapPackageList').innerHTML=mapPackages.length?mapPackages.map(p=>{const active=p.id===activeMapPackage?.id,terrain=p.id===activeTerrainPackage?.id,h=p.header||{},kind=p.mapKind||((h.tileType===1)?'vector':'raster');return `<article class="card map-package-card"><div><h4>${active?'<span class="active-dot"></span>':''}${terrain?'<span class="active-dot terrain-dot"></span>':''}${esc(p.name||p.fileName)}</h4><div class="meta"><span class="tag">${fmtBytes(p.size)}</span><span class="tag">z${h.minZoom??'?'}–${h.maxZoom??'?'}</span><span class="tag">${esc(p.tileLabel||kind)}</span>${p.mountainName?`<span class="tag">${esc(p.mountainName)}</span>`:''}</div><div class="status-line">${active?'BASEMAP AKTIF • ':''}${terrain?'TERRAIN AKTIF • ':''}${dateTimeID(p.importedAt)}</div></div><div class="actions"><button class="mini" data-pm-open="${p.id}">${active?'Peta':'Basemap'}</button>${kind==='terrain'?`<button class="mini secondary" data-terrain-open="${p.id}">${terrain?'Terrain aktif':'Terrain'}</button>`:''}<button class="mini secondary" data-pm-del="${p.id}">Hapus</button></div></article>`}).join(''):'<div class="empty">Belum ada paket peta. V4.1 menerima PMTiles raster, vector Protomaps, dan terrain Terrarium.</div>';
   $$('[data-pm-open]').forEach(b=>b.onclick=()=>activateMapPackage(mapPackages.find(p=>p.id===b.dataset.pmOpen),true));
+  $$('[data-terrain-open]').forEach(b=>b.onclick=()=>activateTerrainPackage(mapPackages.find(p=>p.id===b.dataset.terrainOpen),true));
   $$('[data-pm-del]').forEach(b=>b.onclick=()=>removeMapPackage(b.dataset.pmDel));
 }
 function renderRecordings(){
@@ -86,7 +89,7 @@ function renderRecordings(){
 function setView(id){$$('.view').forEach(v=>v.classList.toggle('active',v.id===id));$$('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.view===id));if(id==='mapView')setTimeout(renderMap,30);if(id==='planView')renderPlan();if(id==='savedView'){renderSaved();renderTripPlans();renderMapPackages();renderRecordings();updateStorage()}}
 
 async function removeRoute(id){await dbDelete(STORES.routes,id);const linked=tripPlans.filter(t=>t.routeId===id);for(const t of linked)await dbDelete(STORES.trips,t.id).catch(()=>{});tripPlans=tripPlans.filter(t=>t.routeId!==id);routes=routes.filter(r=>r.id!==id);if(activeRoute?.id===id){activeRoute=null;activeTrip=null;localStorage.removeItem('jalurnusa_active')}renderAll();renderMap();toast(linked.length?'Rute dan rencana terkait dihapus':'Rute dihapus')}
-async function removeMapPackage(id){await dbDelete(STORES.maps,id);mapPackages=mapPackages.filter(p=>p.id!==id);readerCache.delete(id);if(activeMapPackage?.id===id){activeMapPackage=null;localStorage.removeItem('jalurnusa_map_package')}renderAll();renderMap();updateStorage();toast('Paket peta dihapus')}
+async function removeMapPackage(id){await dbDelete(STORES.maps,id);mapPackages=mapPackages.filter(p=>p.id!==id);readerCache.delete(id);if(activeMapPackage?.id===id){activeMapPackage=null;localStorage.removeItem('jalurnusa_map_package')}if(activeTerrainPackage?.id===id){activeTerrainPackage=null;localStorage.removeItem('jalurnusa_terrain_package')}destroyVectorMap();renderAll();renderMap();updateStorage();toast('Paket peta dihapus')}
 async function removeRecording(id){await dbDelete(STORES.recordings,id);recordings=recordings.filter(r=>r.id!==id);renderRecordings();updateHomeCounts();toast('Rekaman dihapus')}
 function activateRoute(r){if(!r)return;activeRoute=r;localStorage.setItem('jalurnusa_active',r.id);activeTrip=tripPlans.find(t=>t.routeId===r.id)||null;const pkg=mapPackages.find(p=>p.mountainId&&p.mountainId===r.mountainId);if(pkg&&(!activeMapPackage||activeMapPackage.mountainId!==r.mountainId))activateMapPackage(pkg,false);fitActiveRoute();renderPlan();setView('mapView');toast('Rute dibuka offline')}
 function activateRecording(rec){if(!rec?.coords?.length)return;activeRoute={id:`recording:${rec.id}`,name:`Rekaman: ${rec.name}`,coords:rec.coords.map(c=>[c[0],c[1],c[2]]),waypoints:[],sourceType:'recording'};activeTrip=null;localStorage.removeItem('jalurnusa_active');fitActiveRoute();renderPlan();setView('mapView');toast('Rekaman dibuka sebagai rute')}
@@ -318,20 +321,24 @@ async function importRoute(file,mountainId=''){
 }
 
 function inferMountain(header){const inside=mountains.filter(m=>m.lng>=header.minLon&&m.lng<=header.maxLon&&m.lat>=header.minLat&&m.lat<=header.maxLat);if(!inside.length)return null;const c=[header.centerLat,header.centerLon];return inside.sort((a,b)=>hav(c,[a.lat,a.lng])-hav(c,[b.lat,b.lng]))[0]}
-function tileTypeLabel(t){return({2:'PNG',3:'JPEG',4:'WebP',5:'AVIF'})[t]||'Tidak didukung'}
+function tileTypeLabel(t){return({1:'Vector MVT',2:'PNG',3:'JPEG',4:'WebP',5:'AVIF'})[t]||'Tidak didukung'}
 async function importPmtiles(file,mountainId=''){
   if(!window.PMTilesLite)throw Error('Pembaca PMTiles tidak tersedia');
   const reader=new PMTilesLite.Reader(file),summary=await reader.summary(),h=summary.header;
-  if(!summary.raster)throw Error('V3 saat ini mendukung PMTiles raster (PNG/JPEG/WebP/AVIF), bukan vector MVT.');
-  if(!summary.mime)throw Error('Format gambar di dalam PMTiles belum didukung.');
-  if(![0,1,2].includes(h.internalCompression)||![0,1,2].includes(h.tileCompression))throw Error('Gunakan PMTiles dengan kompresi none/gzip untuk kompatibilitas browser V3.');
+  if(![1,2,3,4,5].includes(h.tileType))throw Error('Tile type PMTiles belum didukung V4.1. Gunakan MVT/PNG/JPEG/WebP/AVIF.');
+  if(![0,1,2].includes(h.internalCompression))throw Error('Kompresi direktori PMTiles belum kompatibel. Gunakan none/gzip.');
   let m=mountains.find(x=>x.id===mountainId);if(!m)m=inferMountain(h);
-  const pkg={id:uid(),name:summary.name||file.name.replace(/\.pmtiles$/i,''),fileName:file.name,size:file.size,blob:file,importedAt:new Date().toISOString(),mountainId:m?.id||'',mountainName:m?.name||'',header:h,attribution:summary.attribution||'',tileLabel:tileTypeLabel(h.tileType)};
+  const terrainHint=/terrain|terarium|terrarium|mapterhorn|dem|elevation/i.test(`${file.name} ${summary.name||''}`);
+  const mapKind=h.tileType===1?'vector':(terrainHint?'terrain':'raster');
+  const pkg={id:uid(),name:summary.name||file.name.replace(/\.pmtiles$/i,''),fileName:file.name,size:file.size,blob:file,importedAt:new Date().toISOString(),mountainId:m?.id||'',mountainName:m?.name||'',header:h,attribution:summary.attribution||'',tileLabel:mapKind==='terrain'?'Terrain Terrarium':tileTypeLabel(h.tileType),mapKind};
   try{await dbPut(STORES.maps,pkg)}catch(e){throw Error('Gagal menyimpan paket peta. Ruang penyimpanan perangkat mungkin tidak cukup.')}
-  mapPackages.unshift(pkg);readerCache.set(pkg.id,reader);activateMapPackage(pkg,false);renderAll();updateStorage();setView('mapView');toast(`Paket peta ${pkg.tileLabel} tersimpan offline`);return pkg;
+  mapPackages.unshift(pkg);readerCache.set(pkg.id,reader);
+  if(mapKind==='terrain')activateTerrainPackage(pkg,false);else activateMapPackage(pkg,false);
+  renderAll();updateStorage();setView('mapView');toast(`${pkg.tileLabel} tersimpan offline`);return pkg;
 }
 function packageZoom(h={}){const lo=Math.max(2,h.minZoom??2),hi=Math.max(lo,h.maxZoom??17);return clamp(h.centerZoom??12,lo,hi)}
 function activateMapPackage(pkg,openMap=false){if(!pkg)return;activeMapPackage=pkg;localStorage.setItem('jalurnusa_map_package',pkg.id);const h=pkg.header||{};if(Number.isFinite(h.centerLat)&&Number.isFinite(h.centerLon))mapState.center=[h.centerLat,h.centerLon];mapState.zoom=packageZoom(h);mapState.onlineTiles=false;$('#onlineTilesBtn').textContent='Peta online: MATI';renderMapPackages();renderMap();if(openMap)setView('mapView')}
+function activateTerrainPackage(pkg,openMap=false){if(!pkg)return;activeTerrainPackage=pkg;localStorage.setItem('jalurnusa_terrain_package',pkg.id);mapState.onlineTiles=false;$('#onlineTilesBtn').textContent='Peta online: MATI';renderMapPackages();destroyVectorMap();renderMap();if(openMap)setView('mapView')}
 function packageReader(pkg){if(!pkg?.blob)return null;if(!readerCache.has(pkg.id))readerCache.set(pkg.id,new PMTilesLite.Reader(pkg.blob));return readerCache.get(pkg.id)}
 
 function project(lat,lng,z){const n=2**z,x=(lng+180)/360*n*TILE,rad=clamp(lat,-85.05112878,85.05112878)*Math.PI/180,y=(1-Math.asinh(Math.tan(rad))/Math.PI)/2*n*TILE;return[x,y]}
@@ -341,9 +348,48 @@ function revokeTiles(){tileObjectUrls.forEach(u=>URL.revokeObjectURL(u));tileObj
 function renderMap(){const st=$('#mapStage');if(!st.clientWidth)return;renderTiles();renderRoute();updateRoutePanel()}
 async function renderTiles(){
   const seq=++mapRenderSeq,layer=$('#tileLayer');revokeTiles();layer.innerHTML='';
-  if(mapState.onlineTiles&&navigator.onLine){renderOnlineTiles(seq);return}
-  if(activeMapPackage){const drew=await renderOfflineTiles(activeMapPackage,seq).catch(e=>{if(seq===mapRenderSeq){$('#mapAttrib').textContent='Paket PMTiles gagal dibaca';toast(e.message)}});if(drew||seq!==mapRenderSeq)return}
+  if(mapState.onlineTiles&&navigator.onLine){destroyVectorMap();showClassicBase();renderOnlineTiles(seq);return}
+  const needsMapLibre=(activeMapPackage?.mapKind==='vector')||!!activeTerrainPackage;
+  if(needsMapLibre){
+    const ok=await renderMapLibreOffline(seq).catch(e=>{toast(e.message||'MapLibre gagal');return false});
+    if(ok||seq!==mapRenderSeq)return;
+  }
+  destroyVectorMap();showClassicBase();
+  if(activeMapPackage&&activeMapPackage.mapKind!=='vector'&&activeMapPackage.mapKind!=='terrain'){const drew=await renderOfflineTiles(activeMapPackage,seq).catch(e=>{if(seq===mapRenderSeq){$('#mapAttrib').textContent='Paket PMTiles gagal dibaca';toast(e.message)}});if(drew||seq!==mapRenderSeq)return}
   if(seq===mapRenderSeq){$('#mapAttrib').textContent='Peta rute offline • tanpa peta dasar';$('#mapModePill').textContent='RUTE OFFLINE'}
+}
+function showClassicBase(){const m=$('#maplibreBase');if(m)m.classList.add('hidden');const t=$('#tileLayer');if(t)t.classList.remove('hidden')}
+function destroyVectorMap(){if(vectorMap){try{vectorMap.remove()}catch{}vectorMap=null}const m=$('#maplibreBase');if(m){m.innerHTML='';m.classList.add('hidden')}const t=$('#tileLayer');if(t)t.classList.remove('hidden')}
+function ensureProtocol(){if(pmProtocol)return true;if(!window.maplibregl||!window.pmtiles)return false;pmProtocol=new pmtiles.Protocol({metadata:true});maplibregl.addProtocol('pmtiles',pmProtocol.tile);return true}
+function fileForPackage(pkg){if(pkg.blob instanceof File)return pkg.blob;return new File([pkg.blob],pkg.fileName||`${pkg.id}.pmtiles`,{type:'application/octet-stream'})}
+function addArchiveToProtocol(pkg){if(!pkg||!ensureProtocol())return null;const key=`jn-${pkg.id}.pmtiles`;if(!vectorArchiveKeys.has(key)){const f=fileForPackage(pkg),src=new pmtiles.FileSource(f),archive=new pmtiles.PMTiles(src);archive.source.getKey=()=>key;pmProtocol.add(archive);vectorArchiveKeys.add(key)}return key}
+function protoLayers(source='base'){
+  return [
+    {id:'background',type:'background',paint:{'background-color':'#0d1d15'}},
+    {id:'earth',type:'fill',source,'source-layer':'earth',paint:{'fill-color':'#17271d'}},
+    {id:'landuse',type:'fill',source,'source-layer':'landuse',paint:{'fill-color':['match',['get','kind'],'forest','#173523','park','#1d3d29','#1d3024'],'fill-opacity':0.72}},
+    {id:'water',type:'fill',source,'source-layer':'water',paint:{'fill-color':'#244b59'}},
+    {id:'waterways',type:'line',source,'source-layer':'water',paint:{'line-color':'#3f7f93','line-width':1}},
+    {id:'buildings',type:'fill',source,'source-layer':'buildings',minzoom:13,paint:{'fill-color':'#465247','fill-opacity':0.72}},
+    {id:'roads-casing',type:'line',source,'source-layer':'roads',paint:{'line-color':'#0a110d','line-width':['interpolate',['linear'],['zoom'],8,1.2,15,5]}},
+    {id:'roads',type:'line',source,'source-layer':'roads',paint:{'line-color':['match',['get','kind'],'highway','#d2b36e','major_road','#b99b64','minor_road','#8f8b72','path','#a39161','#9a967e'],'line-width':['interpolate',['linear'],['zoom'],8,0.5,15,2.2]}},
+    {id:'boundaries',type:'line',source,'source-layer':'boundaries',paint:{'line-color':'#67746b','line-dasharray':[3,3],'line-width':0.8}}
+  ];
+}
+async function renderMapLibreOffline(seq){
+  if(!ensureProtocol())throw Error('Renderer vector belum dimuat. Buka aplikasi sekali saat online agar komponen MapLibre tersedia.');
+  const box=$('#maplibreBase');if(!box)return false;$('#tileLayer').classList.add('hidden');box.classList.remove('hidden');
+  if(vectorMap){try{vectorMap.remove()}catch{}vectorMap=null;box.innerHTML=''}
+  const sources={},layers=[];
+  if(activeMapPackage?.mapKind==='vector'){
+    const key=addArchiveToProtocol(activeMapPackage);sources.base={type:'vector',url:`pmtiles://${key}`,attribution:activeMapPackage.attribution||'© OpenStreetMap contributors • Protomaps'};layers.push(...protoLayers('base'));
+  } else if(activeMapPackage?.mapKind==='raster'){
+    const key=addArchiveToProtocol(activeMapPackage);sources.base={type:'raster',url:`pmtiles://${key}`,tileSize:256,attribution:activeMapPackage.attribution||''};layers.push({id:'background',type:'background',paint:{'background-color':'#0d1d15'}},{id:'rasterbase',type:'raster',source:'base'});
+  } else layers.push({id:'background',type:'background',paint:{'background-color':'#0d1d15'}});
+  if(activeTerrainPackage){const key=addArchiveToProtocol(activeTerrainPackage);sources.dem={type:'raster-dem',url:`pmtiles://${key}`,encoding:'terrarium',tileSize:512};layers.push({id:'hillshade',type:'hillshade',source:'dem',paint:{'hillshade-shadow-color':'#08100b','hillshade-highlight-color':'#d4c58f','hillshade-accent-color':'#576e5d','hillshade-exaggeration':0.55}})}
+  vectorMap=new maplibregl.Map({container:box,style:{version:8,sources,layers},center:[mapState.center[1],mapState.center[0]],zoom:mapState.zoom,interactive:false,attributionControl:false,fadeDuration:0});
+  await new Promise((res,rej)=>{const t=setTimeout(()=>res(),3500);vectorMap.once('load',()=>{clearTimeout(t);res()});vectorMap.once('error',e=>{if(e?.error?.message){console.warn(e.error.message)}})});
+  if(seq!==mapRenderSeq)return false;$('#mapAttrib').textContent=`${activeMapPackage?.name||'Terrain'}${activeTerrainPackage?' + hillshade terrain':''} • PMTiles offline`;$('#mapModePill').textContent=activeTerrainPackage?'TOPO OFFLINE':'VECTOR OFFLINE';return true;
 }
 function renderOnlineTiles(seq){
   if(seq!==mapRenderSeq)return;const layer=$('#tileLayer'),v=viewport(),z=mapState.zoom,n=2**z,x0=Math.floor(v.left/TILE),x1=Math.floor((v.left+v.w)/TILE),y0=Math.floor(v.top/TILE),y1=Math.floor((v.top+v.h)/TILE);
@@ -362,6 +408,7 @@ async function renderOfflineTiles(pkg,seq){
 }
 function markerCircle(x,y,r,fill,stroke='#fff'){return `<circle cx="${x}" cy="${y}" r="${r}" fill="${fill}" stroke="${stroke}" stroke-width="2"/><circle cx="${x}" cy="${y}" r="${r+6}" fill="none" stroke="${fill}" stroke-opacity=".25" stroke-width="5"/>`}
 function renderRoute(){
+  if(vectorMap){try{vectorMap.jumpTo({center:[mapState.center[1],mapState.center[0]],zoom:mapState.zoom})}catch{}}
   const v=viewport(),line=$('#routeLine'),recLine=$('#recordingLine'),marks=$('#mapMarkers'),wps=$('#waypointMarkers');let pts='';marks.innerHTML='';wps.innerHTML='';
   if(activeRoute?.coords?.length){pts=activeRoute.coords.map(c=>{const [x,y]=project(c[0],c[1],mapState.zoom);return `${(x-v.left).toFixed(1)},${(y-v.top).toFixed(1)}`}).join(' ');const a=activeRoute.coords[0],b=activeRoute.coords.at(-1),p1=project(a[0],a[1],mapState.zoom),p2=project(b[0],b[1],mapState.zoom);marks.innerHTML=markerCircle(p1[0]-v.left,p1[1]-v.top,6,'#6ec28f')+markerCircle(p2[0]-v.left,p2[1]-v.top,6,'#f18475');
     const way=(activeRoute.waypoints||[]).slice(0,80);wps.innerHTML=way.map((w,i)=>{const p=project(w.lat,w.lng,mapState.zoom),x=p[0]-v.left,y=p[1]-v.top,kind=wpKind(w),fill=({water:'#4aa3ff',hazard:'#f18475',summit:'#f0b84b',basecamp:'#6ec28f',camp:'#b79cff',pos:'#f0b84b',custom:'#d6dcd8'})[kind]||'#f0b84b';return `<g><circle cx="${x}" cy="${y}" r="6" fill="${fill}" stroke="#07110c" stroke-width="2"><title>${esc(w.name||'Waypoint')} • ${esc(kind)}</title></circle><text x="${x+8}" y="${y-8}" class="waypoint-label">${i+1}</text></g>`}).join('');
@@ -413,7 +460,7 @@ function appendRecordingFix(fix,force=false){
   if(!currentRecording?.active)return;if(!force&&Number(fix.accuracy)>100)return;const p=[fix.lat,fix.lng,Number.isFinite(fix.altitude)?fix.altitude:null,new Date(fix.time||Date.now()).toISOString(),fix.accuracy];const last=currentRecording.coords.at(-1);if(!force&&last&&hav(last,p)<0.003)return;currentRecording.coords.push(p);currentRecording.lastAt=p[3];if(currentRecording.coords.length%5===0)dbPut(STORES.recordings,currentRecording).catch(()=>{});updateRecordingUI();renderRoute();
 }
 function updateRecordingUI(){const r=currentRecording;if(!r){$('#trackDistance').textContent='0.00 km';$('#trackDuration').textContent='00:00:00';$('#trackPoints').textContent='0 titik';return}$('#trackDistance').textContent=distance(r.coords).toFixed(2)+' km';$('#trackDuration').textContent=fmtDuration((r.active?Date.now():new Date(r.endAt||r.lastAt))-new Date(r.startAt));$('#trackPoints').textContent=`${r.coords.length} titik`;updateRoutePanel()}
-function recordingToGPX(r){const pts=(r.coords||[]).map(c=>`      <trkpt lat="${c[0]}" lon="${c[1]}">${Number.isFinite(Number(c[2]))?`<ele>${Number(c[2]).toFixed(1)}</ele>`:''}${c[3]?`<time>${xmlEsc(c[3])}</time>`:''}</trkpt>`).join('\n');return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="JalurNusa Offline V3" xmlns="http://www.topografix.com/GPX/1/1">\n  <trk><name>${xmlEsc(r.name||'Rekaman JalurNusa')}</name><trkseg>\n${pts}\n  </trkseg></trk>\n</gpx>`}
+function recordingToGPX(r){const pts=(r.coords||[]).map(c=>`      <trkpt lat="${c[0]}" lon="${c[1]}">${Number.isFinite(Number(c[2]))?`<ele>${Number(c[2]).toFixed(1)}</ele>`:''}${c[3]?`<time>${xmlEsc(c[3])}</time>`:''}</trkpt>`).join('\n');return `<?xml version="1.0" encoding="UTF-8"?>\n<gpx version="1.1" creator="JalurNusa Offline V4" xmlns="http://www.topografix.com/GPX/1/1">\n  <trk><name>${xmlEsc(r.name||'Rekaman JalurNusa')}</name><trkseg>\n${pts}\n  </trkseg></trk>\n</gpx>`}
 function safeFileName(s){return String(s||'jalurnusa-track').replace(/[^a-z0-9._-]+/gi,'_').replace(/^_+|_+$/g,'')}
 function exportRecording(r){if(!r?.coords?.length)return toast('Belum ada titik untuk diekspor');const blob=new Blob([recordingToGPX(r)],{type:'application/gpx+xml'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=safeFileName(r.name)+'.gpx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('GPX dibuat')}
 
@@ -479,11 +526,11 @@ async function addWaypoint(){
   if(!activeRoute||!routes.some(r=>r.id===activeRoute.id))return toast('Waypoint hanya dapat ditambahkan ke rute tersimpan');const name=$('#wpName').value.trim()||'Waypoint',lat=Number($('#wpLat').value),lng=Number($('#wpLng').value);if(!Number.isFinite(lat)||!Number.isFinite(lng)||Math.abs(lat)>90||Math.abs(lng)>180)return toast('Koordinat waypoint tidak valid');const w={id:uid(),name,type:$('#wpType').value||'custom',desc:$('#wpDesc').value.trim(),lat,lng,ele:null,source:'user',createdAt:new Date().toISOString()};activeRoute.waypoints=activeRoute.waypoints||[];activeRoute.waypoints.push(w);await dbPut(STORES.routes,activeRoute);$('#wpName').value='';$('#wpDesc').value='';$('#wpLat').value='';$('#wpLng').value='';renderPlan();renderMap();const pos=routePosition([lat,lng],activeRoute.coords);toast(pos&&pos.distanceM>300?`Waypoint ditambah (${Math.round(pos.distanceM)} m dari rute)`:'Waypoint ditambahkan')
 }
 function useGpsWaypoint(){if(!gpsFix){startGpsWatch();return toast('Menunggu posisi GPS…')}$('#wpLat').value=gpsFix.lat.toFixed(6);$('#wpLng').value=gpsFix.lng.toFixed(6);toast('Koordinat GPS dimasukkan')}
-function routePackageObject(r){return{format:'JalurNusaRoutePackage',version:3,exportedAt:new Date().toISOString(),route:{name:r.name,mountainId:r.mountainId||'',mountainName:r.mountainName||'',coords:r.coords,waypoints:r.waypoints||[],guide:r.guide||{},sourceFile:r.sourceFile||'',geometryKind:r.geometryKind||'route'},trip:tripPlans.find(t=>t.routeId===r.id)||null}}
+function routePackageObject(r){return{format:'JalurNusaRoutePackage',version:4,exportedAt:new Date().toISOString(),route:{name:r.name,mountainId:r.mountainId||'',mountainName:r.mountainName||'',coords:r.coords,waypoints:r.waypoints||[],guide:r.guide||{},sourceFile:r.sourceFile||'',geometryKind:r.geometryKind||'route'},trip:tripPlans.find(t=>t.routeId===r.id)||null}}
 function downloadJson(obj,name){const blob=new Blob([JSON.stringify(obj,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
-function exportRoutePackage(r=activeRoute){if(!r||!routes.some(x=>x.id===r.id))return toast('Buka rute tersimpan terlebih dahulu');downloadJson(routePackageObject(r),safeFileName(r.name)+'.jalurnusa.json');toast('Paket rute V3 dibuat')}
+function exportRoutePackage(r=activeRoute){if(!r||!routes.some(x=>x.id===r.id))return toast('Buka rute tersimpan terlebih dahulu');downloadJson(routePackageObject(r),safeFileName(r.name)+'.jalurnusa.json');toast('Paket rute JalurNusa dibuat')}
 function parseJalurNusaPackage(text){let j;try{j=JSON.parse(text)}catch{return null}if(j?.format!=='JalurNusaRoutePackage'||!j.route)return null;const r=j.route;if(!Array.isArray(r.coords)||r.coords.length<2)throw Error('Paket JalurNusa tidak memiliki rute yang valid');return{name:r.name||'Rute JalurNusa',coords:r.coords.map(c=>[Number(c[0]),Number(c[1]),c[2]==null?null:Number(c[2])]).filter(c=>Number.isFinite(c[0])&&Number.isFinite(c[1])),waypoints:Array.isArray(r.waypoints)?r.waypoints:[],mountainId:r.mountainId||'',mountainName:r.mountainName||'',guide:r.guide||{},trip:j.trip||null,packageVersion:j.version||3,geometryKind:r.geometryKind||'route'}}
-async function exportBackup(){const settings={note:localStorage.getItem('jalurnusa_note')||'',offRoute:localStorage.getItem('jalurnusa_offroute')||'0',offRouteThreshold:localStorage.getItem('jalurnusa_offroute_threshold')||'100',emergencyName:localStorage.getItem('jalurnusa_emergency_name')||'',emergencyPhone:localStorage.getItem('jalurnusa_emergency_phone')||''};downloadJson({format:'JalurNusaBackup',version:3,exportedAt:new Date().toISOString(),routes,recordings,tripPlans,settings,note:'Paket PMTiles tidak dimasukkan agar file backup tetap ringan.'},`JalurNusa_Backup_${new Date().toISOString().slice(0,10)}.json`);toast('Backup data V3 dibuat')}
+async function exportBackup(){const settings={note:localStorage.getItem('jalurnusa_note')||'',offRoute:localStorage.getItem('jalurnusa_offroute')||'0',offRouteThreshold:localStorage.getItem('jalurnusa_offroute_threshold')||'100',emergencyName:localStorage.getItem('jalurnusa_emergency_name')||'',emergencyPhone:localStorage.getItem('jalurnusa_emergency_phone')||''};downloadJson({format:'JalurNusaBackup',version:4,exportedAt:new Date().toISOString(),routes,recordings,tripPlans,settings,note:'Paket PMTiles tidak dimasukkan agar file backup tetap ringan.'},`JalurNusa_Backup_${new Date().toISOString().slice(0,10)}.json`);toast('Backup data V4.1 dibuat')}
 
 function updateOffRoute(){
   if(!activeRoute?.coords?.length||activeRoute.geometryKind==='boundary'||!gpsPosition){$('#statOffRoute').textContent=activeRoute?.geometryKind==='boundary'?'N/A':'—';$('#offRouteReadout').textContent='Butuh rute aktif dan GPS.';$('#offRouteReadout').className='status-box';return}
@@ -508,7 +555,7 @@ function updateNetwork(){const on=navigator.onLine;$('#networkTitle').textConten
 
 $$('.nav-item').forEach(b=>b.onclick=()=>setView(b.dataset.view));$('#searchInput').oninput=renderMountains;$('#provinceFilter').onchange=renderMountains;
 $('#importBtn').onclick=()=>{delete $('#fileInput').dataset.mountainId;$('#fileInput').click()};
-$('#fileInput').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{await importRoute(f,e.target.dataset.mountainId||'');toast('Rute tersimpan offline')}catch(err){toast(err.message||'Gagal membaca rute')}e.target.value=''};
+$('#fileInput').onchange=async e=>{const files=[...(e.target.files||[])];if(!files.length)return;const mountainId=e.target.dataset.mountainId||'';let ok=0,failed=[];for(const f of files){try{await importRoute(f,mountainId);ok++}catch(err){failed.push(`${f.name}: ${err.message||'gagal dibaca'}`)}}e.target.value='';if(failed.length){console.warn('JalurNusa import diagnostics',failed);toast(`${ok} rute berhasil • ${failed.length} gagal. Cek nama/isi file.`)}else toast(files.length>1?`${ok} rute berhasil diimpor`:'Rute tersimpan offline')};
 $('#importPmtilesBtn').onclick=()=>{delete $('#pmtilesInput').dataset.mountainId;$('#pmtilesInput').click()};
 $('#pmtilesInput').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{await importPmtiles(f,e.target.dataset.mountainId||'')}catch(err){toast(err.message||'Gagal membaca PMTiles')}e.target.value=''};
 $('#onlineTilesBtn').onclick=()=>{if(!navigator.onLine)return toast('Tidak ada koneksi');mapState.onlineTiles=!mapState.onlineTiles;$('#onlineTilesBtn').textContent=`Peta online: ${mapState.onlineTiles?'HIDUP':'MATI'}`;renderMap()};
@@ -522,5 +569,6 @@ $('#saveTripBtn').onclick=saveTrip;$('#exportRoutePackageBtn').onclick=()=>expor
 const stage=$('#mapStage');stage.addEventListener('pointerdown',e=>{mapState.dragging=true;mapState.last=[e.clientX,e.clientY];stage.setPointerCapture(e.pointerId)});stage.addEventListener('pointermove',e=>{if(!mapState.dragging)return;const dx=e.clientX-mapState.last[0],dy=e.clientY-mapState.last[1];mapState.last=[e.clientX,e.clientY];movePixels(dx,dy)});stage.addEventListener('pointerup',()=>mapState.dragging=false);stage.addEventListener('pointercancel',()=>mapState.dragging=false);stage.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?1:-1)},{passive:false});
 window.addEventListener('resize',renderMap);window.addEventListener('online',updateNetwork);window.addEventListener('offline',updateNetwork);window.addEventListener('beforeunload',()=>{if(currentRecording?.active)dbPut(STORES.recordings,currentRecording).catch(()=>{})});
 window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredInstall=e;$('#installBtn').classList.remove('hidden')});$('#installBtn').onclick=async()=>{if(deferredInstall){deferredInstall.prompt();deferredInstall=null;$('#installBtn').classList.add('hidden')}};
+window.JalurNusaDiagnostics={version:'4.0-final',parseGPX,parseGeoJSON,detectRouteData};
 if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js'));
 load();
