@@ -1,0 +1,19 @@
+{
+  "name": "JalurNusa Offline V4.3 Outdoor Pro",
+  "short_name": "JalurNusa V4.3",
+  "description": "Peta hiking offline profesional, PMTiles vector/topografi, progress GPS, tracking, waypoint, rencana pendakian, checklist, dan alat keselamatan.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#07110c",
+  "theme_color": "#08140e",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
