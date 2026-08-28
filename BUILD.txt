@@ -1,0 +1,10 @@
+JalurNusa Offline V4.2 Professional
+Professional full-screen map UI
+Progress gate: hidden when >1 km from route
+Off-route alert armed only after reaching threshold
+Vector PMTiles overzoom to Z22
+Pinch, double-tap, wheel and point-centered zoom
+Compact/expanded route bottom sheet
+High-detail vector trail styling + improved hillshade
+Improved GPS marker with accuracy radius and heading
+Compatible with V4.1.1 data / PMTiles / JalurNusa routes
